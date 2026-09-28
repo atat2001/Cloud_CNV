@@ -1,0 +1,72 @@
+Constants:
+  MAX_POINTS = 10
+  SMALL_THRESHOLD  = 100_000     // Instructions
+  MEDIUM_THRESHOLD = 500_000     // Instructions
+
+Data Structures:
+  vmStates: Map<VM_ID, currentPoints>
+  metricsDB: Map<RequestSignature, instructionCount>
+
+Main Load Balancer Logic:
+function handleRequest(request):
+    signature = getSignature(request)
+
+    // 1. Try to find exact match in metrics
+    if metricsDB.contains(signature):
+        instrCount = metricsDB.get(signature)
+
+    // 2. Try to estimate via extrapolation
+    else if canEstimate(request, metricsDB):
+        instrCount = estimateInstructionCount(request, metricsDB)
+
+    // 3. If we can't estimate, assume worst-case
+    else:
+        instrCount = LARGE_THRESHOLD + 1
+
+    // 4. Map instruction count to point value
+    points = computePoints(instrCount)
+
+    // 5. Find best-fit VM (greedy packing)
+    selectedVM = null
+    minSpareCapacity = MAX_POINTS + 1
+
+    for vmID, load in vmStates:
+        if load + points <= MAX_POINTS:
+            spare = MAX_POINTS - (load + points)
+            if spare < minSpareCapacity:
+                selectedVM = vmID
+                minSpareCapacity = spare
+
+    // 6. Route to selected VM or wait for AS to scale
+    if selectedVM != null:
+        routeToVM(selectedVM, request)
+        vmStates[selectedVM] += points
+    else:
+        // No VM can currently handle the load
+        // Wait or retry after AS adds capacity
+        queueRequestUntilVMAvailable(request)
+
+Helper Functions:
+function computePoints(instrCount):
+    if instrCount <= SMALL_THRESHOLD:
+        return 1
+    else if instrCount <= MEDIUM_THRESHOLD:
+        return 2
+    else:
+        return 3
+
+function getSignature(request):
+    // Normalize parameters like map name, grid size, etc.
+    return {
+        gameType: request.gameType,
+        parameters: request.relevantParams
+    }
+
+function canEstimate(request, metricsDB):
+    // Depends on workload type and whether similar data exists
+    // e.g., Game of Life: same map, different iterations
+    // CTF: same flagType
+    // 15 Puzzle: same shuffle depth, different size
+
+function estimateInstructionCount(request, metricsDB):
+    // Use linear or heuristic models discussed for each workload
